@@ -1,5 +1,5 @@
 // components/MemberTable.jsx
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useCollection, useDocumentData } from 'react-firebase-hooks/firestore';
 import {
   collection,
@@ -15,11 +15,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUp, ArrowDown } from 'lucide-react';
 
 export default function MemberTable() {
-  // 1) Hooks & state
-  const [snapMembers, loadingMembers, errorMembers] = useCollection(
+  // 1) Data hooks
+  const [snap, loadingSnap, errorSnap] = useCollection(
     query(collection(db, 'members'), orderBy('renewalDate', 'desc'))
   );
-  const [settings]      = useDocumentData(doc(db, 'settings', 'default'));
+  const [settings, loadingSettings] = useDocumentData(
+    doc(db, 'settings', 'default')
+  );
+
+  // 2) UI state
   const [search, setSearch]             = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [sortField, setSortField]       = useState(null);
@@ -30,36 +34,62 @@ export default function MemberTable() {
   const [editingId, setEditingId]       = useState(null);
   const [editData, setEditData]         = useState({});
 
-  // 2) Date helpers & status calc
+  // 3) Drag-to-scroll state
+  const scrollRef = useRef(null);
+  const [isDown, setIsDown]           = useState(false);
+  const [startX, setStartX]           = useState(0);
+  const [scrollLeft, setScrollLeft]   = useState(0);
+
+  const handleMouseDown  = e => {
+    const ref = scrollRef.current;
+    setIsDown(true);
+    setStartX(e.pageX - ref.offsetLeft);
+    setScrollLeft(ref.scrollLeft);
+  };
+  const handleMouseUp     = () => setIsDown(false);
+  const handleMouseLeave  = () => setIsDown(false);
+  const handleMouseMove   = e => {
+    if (!isDown) return;
+    e.preventDefault();
+    const ref = scrollRef.current;
+    const x = e.pageX - ref.offsetLeft;
+    const walk = (x - startX) * 1; // drag-speed
+    ref.scrollLeft = scrollLeft - walk;
+  };
+
+  // 4) Date helpers
   const parseDate = val => {
     if (!val) return null;
     if (val.toDate) return val.toDate();
     const d = new Date(val);
     if (!isNaN(d)) return d;
-    const [a,b,c] = val.split('/').map(n=>parseInt(n,10));
-    return a>12 ? new Date(c,b-1,a) : new Date(c,a-1,b);
+    const [a,b,c] = val.split('/').map(n => parseInt(n, 10));
+    return a > 12 ? new Date(c, b - 1, a) : new Date(c, a - 1, b);
   };
   const formatDate = d =>
     d instanceof Date
       ? `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`
       : '-';
+
   const calcDueDate = (renewal, period) => {
     const base = parseDate(renewal);
     if (!base || !period) return null;
-    const [n,unit] = period.split(' ');
+    const [n, unit] = period.split(' ');
     const dt = new Date(base);
-    if (unit.startsWith('month')) dt.setMonth(dt.getMonth()+parseInt(n,10));
-    else if (unit.startsWith('day')) dt.setDate(dt.getDate()+parseInt(n,10));
+    if (unit.startsWith('month')) dt.setMonth(dt.getMonth() + parseInt(n, 10));
+    else if (unit.startsWith('day')) dt.setDate(dt.getDate() + parseInt(n, 10));
     return dt;
   };
+
   const calcStatus = due => {
     if (!due) return 'N/A';
-    const today = new Date(); today.setHours(0,0,0,0);
+    const today = new Date();
+    today.setHours(0,0,0,0);
     due.setHours(0,0,0,0);
     const diff = Math.floor((due - today)/(1000*60*60*24));
-    if (diff>0) return 'Not Due';
-    if (diff===0) return 'Follow up';
-    if (diff>=-2) return 'Overdue';
+    if (diff > 0) return 'Not Due';
+    if (diff === 0) return 'Follow up';
+    if (diff >= -2) return 'Overdue';
     return 'On Hold';
   };
   const statusColor = s => ({
@@ -67,10 +97,10 @@ export default function MemberTable() {
     'Follow up':'bg-yellow-100 text-yellow-800',
     'Overdue':'bg-red-100 text-red-800',
     'On Hold':'bg-gray-200 text-gray-800'
-  }[s]||'bg-gray-100 text-gray-800');
+  }[s] || 'bg-gray-100 text-gray-800');
 
-  // 3) Flatten docs → rows
-  const members = (snapMembers?.docs||[]).map(d => {
+  // 5) Flatten Firestore docs
+  const members = (snap?.docs || []).map(d => {
     const m = d.data();
     const due = calcDueDate(m.renewalDate, m.period);
     return {
@@ -79,19 +109,19 @@ export default function MemberTable() {
       renewalStr: formatDate(parseDate(m.renewalDate)),
       dueStr:     formatDate(due),
       status:     calcStatus(due),
-      diffDays:   due
+      diffDays:   due 
         ? Math.floor((due - new Date(new Date().setHours(0,0,0,0))) / (1000*60*60*24))
         : 0
     };
   });
 
-  // 4) Search / filter / sort
-  const filtered = useMemo(() =>
+  // 6) Search / filter / sort
+  const filtered = useMemo(() => 
     members
       .filter(m =>
-        (statusFilter==='All' || m.status===statusFilter) &&
-        [m.name, m.mobile, m.email||'']
-          .some(v => v.toLowerCase().includes(search.toLowerCase()))
+        (statusFilter === 'All' || m.status === statusFilter) &&
+        [m.name,m.mobile,m.email||'', m.paidBy||'']
+          .some(v=>v.toLowerCase().includes(search.toLowerCase()))
       )
       .sort((a,b) => {
         if (!sortField) return 0;
@@ -102,33 +132,35 @@ export default function MemberTable() {
         if (av > bv) return sortAsc ? 1 : -1;
         return 0;
       })
-  , [members, search, statusFilter, sortField, sortAsc]);
+  ,[members, search, statusFilter, sortField, sortAsc]);
 
-  // 5) Loading / error
-  if (loadingMembers || !settings)
+  // 7) Loading / error
+  if (loadingSnap || loadingSettings)
     return <p className="p-4 text-center">Loading…</p>;
-  if (errorMembers)
+  if (errorSnap)
     return <p className="p-4 text-center text-red-600">Error loading members</p>;
 
-  // 6) Handlers
-  const toggleSelectAll = e => setSelected(e.target.checked ? filtered.map(m=>m.id) : []);
-  const toggleSelect    = id => setSelected(s=> s.includes(id) ? s.filter(x=>x!==id) : [...s,id]);
+  // 8) Handlers
+  const toggleSelectAll = e => 
+    setSelected(e.target.checked ? filtered.map(m=>m.id) : []);
+  const toggleSelect    = id => 
+    setSelected(sel => sel.includes(id) ? sel.filter(x=>x!==id) : [...sel,id]);
   const sortBy          = field => {
-    if (sortField===field) setSortAsc(a=>!a);
+    if (sortField === field) setSortAsc(a=>!a);
     else { setSortField(field); setSortAsc(true); }
   };
-  const toggleFreeze = async (id,f)=> {
-    await updateDoc(doc(db,'members',id),{ freeze:!f });
+  const toggleFreeze    = async (id,f) => {
+    await updateDoc(doc(db,'members',id),{ freeze: !f });
   };
 
-  // 7) Reminders & logs
+  // 9) Send reminders
   const sendReminder = async m => {
     setSendingIds(ids=>[...ids,m.id]);
     const tpl = settings.messageTemplates[String(m.diffDays)] || settings.messageTemplates['0'];
     const msg = tpl
-      .replace('{name}',m.name)
-      .replace('{dueDate}',m.dueStr)
-      .replace('{diffDays}',String(m.diffDays));
+      .replace('{name}', m.name)
+      .replace('{dueDate}', m.dueStr)
+      .replace('{diffDays}', String(m.diffDays));
     const to = (m.paidBy||m.mobile).replace(/\D/g,'');
     let status='Sent', err='';
     try {
@@ -154,8 +186,7 @@ export default function MemberTable() {
   const sendBulk = async () => {
     setSendingBulk(true);
     for (let m of filtered.filter(m=>selected.includes(m.id))) {
-      await new Promise(r=>setTimeout(r, settings.messageInterval*1000));
-      // eslint-disable-next-line no-await-in-loop
+      await new Promise(r=>setTimeout(r, settings.messageInterval * 1000));
       await sendReminder(m);
     }
     setSendingBulk(false);
@@ -164,21 +195,55 @@ export default function MemberTable() {
   };
 
   // 8) Inline edit
-  const startEdit        = m => { setEditingId(m.id); setEditData({...m}); };
-  const cancelEdit       = () => { setEditingId(null); setEditData({}); };
-  const handleEditChange = (k,v) => setEditData(d=>({...d,[k]:v}));
-  const saveEdit         = async id => {
-    const due = calcDueDate(editData.renewalDate, editData.period);
-    await updateDoc(doc(db,'members',id),{
-      ...editData,
-      dueDate:due?.toISOString().slice(0,10)
-    });
-    cancelEdit();
-  };
+const startEdit        = m => {
+  setEditingId(m.id);
+  setEditData({
+    name:         m.name,
+    mobile:       m.mobile,
+    renewalDate:  // convert to yyyy-MM-dd for <input type="date">
+      parseDate(m.renewalDate).toISOString().slice(0,10),
+    period:       m.period,
+    batch:        m.batch,
+    category:     m.category,
+    fees:         m.fees,
+    paidBy:       m.paidBy,
+    email:        m.email,
+    leadSource:   m.leadSource,
+    source:       m.source
+  });
+};
+const cancelEdit       = () => {
+  setEditingId(null);
+  setEditData({});
+};
+const handleEditChange = (key, val) => {
+  setEditData(d=>({ ...d, [key]: val }));
+};
+const saveEdit         = async id => {
+  // recalc dueDate based on edited renewalDate & period
+  const due = calcDueDate(editData.renewalDate, editData.period);
+  await updateDoc(doc(db,'members',id), {
+    name:         editData.name,
+    mobile:       editData.mobile,
+    renewalDate:  editData.renewalDate,
+    period:       editData.period,
+    batch:        editData.batch,
+    category:     editData.category,
+    fees:         Number(editData.fees),
+    paidBy:       editData.paidBy,
+    email:        editData.email,
+    leadSource:   editData.leadSource,
+    source:       editData.source,
+    dueDate:      due?.toISOString().slice(0,10)
+  });
+  cancelEdit();
+};
 
-  // 9) Render
+
+  // 11) Render
   return (
     <div className="space-y-4">
+
       {/* Controls */}
       <div className="flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
         <div className="flex items-center space-x-2">
@@ -219,9 +284,19 @@ export default function MemberTable() {
         </button>
       </div>
 
-      {/* Desktop Table */}
-      <div className="hidden md:block overflow-x-auto">
-        <table className="min-w-full bg-white shadow rounded-lg overflow-hidden">
+      {/* Desktop Table (drag-to-scroll) */}
+      <div
+        ref={scrollRef}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        onMouseMove={handleMouseMove}
+        className={`hidden md:block overflow-x-auto w-full touch-pan-x ${
+          isDown ? 'cursor-grabbing' : 'cursor-grab'
+        }`}
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
+        <table className="min-w-max bg-white shadow rounded-lg">
           <thead className="bg-indigo-50">
             <tr>
               <th className="p-3">
@@ -233,32 +308,23 @@ export default function MemberTable() {
                 />
               </th>
               {[
-                {key:'name',label:'Name'},
-                {key:'mobile',label:'Mobile'},
-                {key:'renewalStr',label:'Renewal'},
-                {key:'period',label:'Period'},
-                {key:'dueStr',label:'Due Date'},
-                {key:'status',label:'Status'},
-                {key:'batch',label:'Batch'},
-                {key:'category',label:'Category'},
-                {key:'fees',label:'Fees'},
-                {key:'paidBy',label:'Paid By'},
-                {key:'email',label:'Email'},
-                {key:'leadSource',label:'Lead Source'},
-                {key:'source',label:'Source'},
-                {key:'reminderStatus',label:'Reminder Status'},
-                {key:'freeze',label:'Freeze'}
-              ].map(col=>(
+                'name','mobile','renewalStr','period','dueStr',
+                'status','batch','category','fees','paidBy',
+                'email','leadSource','source','reminderStatus','freeze'
+              ].map(key=>(
                 <th
-                  key={col.key}
-                  onClick={()=>sortBy(col.key)}
-                  className="px-3 py-2 text-left text-sm font-semibold text-gray-600 cursor-pointer select-none"
+                  key={key}
+                  onClick={()=>sortBy(key)}
+                  className="px-3 py-2 text-left text-sm font-semibold text-gray-600 cursor-pointer"
                 >
-                  {col.label}
-                  {sortField===col.key && (
-                    sortAsc
-                      ? <ArrowUp className="inline ml-1 w-4 h-4"/>
-                      : <ArrowDown className="inline ml-1 w-4 h-4"/>
+                  {key
+                    .replace(/Str$/,'')
+                    .replace(/([A-Z])/g,' $1')
+                    .replace(/^./,s=>s.toUpperCase())
+                  }
+                  {sortField===key && ( sortAsc
+                    ? <ArrowUp className="inline ml-1 w-4 h-4"/>
+                    : <ArrowDown className="inline ml-1 w-4 h-4"/>
                   )}
                 </th>
               ))}
@@ -284,40 +350,140 @@ export default function MemberTable() {
                       className="w-4 h-4"
                     />
                   </td>
-                  {editingId===m.id ? (
-                    <>
-                      {/* inline edit inputs (just name shown for brevity) */}
-                      <td className="p-2">
-                        <input
-                          value={editData.name}
-                          onChange={e=>handleEditChange('name',e.target.value)}
-                          className="w-full px-2 py-1 border rounded-lg"
-                        />
-                      </td>
-                      {/* …other fields… */}
-                      <td className="p-2 space-x-2">
-                        <button
-                          onClick={()=>saveEdit(m.id)}
-                          className="px-2 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={cancelEdit}
-                          className="px-2 py-1 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400"
-                        >
-                          Cancel
-                        </button>
-                      </td>
-                    </>
-                  ) : (
+                  {editingId === m.id ? (
+  <>
+    <td className="p-2"><input
+      value={editData.name}
+      onChange={e => handleEditChange('name', e.target.value)}
+      className="w-full px-2 py-1 border rounded"
+    /></td>
+
+    <td className="p-2"><input
+      value={editData.mobile}
+      onChange={e => handleEditChange('mobile', e.target.value)}
+      className="w-full px-2 py-1 border rounded"
+    /></td>
+
+    <td className="p-2"><input
+      type="date"
+      value={editData.renewalDate}
+      onChange={e => handleEditChange('renewalDate', e.target.value)}
+      className="w-full px-2 py-1 border rounded"
+    /></td>
+
+    <td className="p-2">
+      <select
+        value={editData.period}
+        onChange={e => handleEditChange('period', e.target.value)}
+        className="w-full px-2 py-1 border rounded"
+      >
+        <option value="">Select…</option>
+        {settings.periodOptions.map(o=>(
+          <option key={o} value={o}>{o}</option>
+        ))}
+      </select>
+    </td>
+
+    {/* read-only dueStr & status */}
+    <td className="p-2">{m.dueStr}</td>
+    <td className="p-2">{m.status}</td>
+
+    <td className="p-2">
+      <select
+        value={editData.batch}
+        onChange={e => handleEditChange('batch', e.target.value)}
+        className="w-full px-2 py-1 border rounded"
+      >
+        <option value="">Select…</option>
+        {settings.batchOptions.map(o=>(
+          <option key={o} value={o}>{o}</option>
+        ))}
+      </select>
+    </td>
+
+    <td className="p-2">
+      <select
+        value={editData.category}
+        onChange={e => handleEditChange('category', e.target.value)}
+        className="w-full px-2 py-1 border rounded"
+      >
+        <option value="">Select…</option>
+        {settings.categoryOptions.map(o=>(
+          <option key={o} value={o}>{o}</option>
+        ))}
+      </select>
+    </td>
+
+    <td className="p-2"><input
+      type="number"
+      value={editData.fees}
+      onChange={e => handleEditChange('fees', e.target.value)}
+      className="w-full px-2 py-1 border rounded"
+    /></td>
+
+    <td className="p-2"><input
+      value={editData.paidBy}
+      onChange={e => handleEditChange('paidBy', e.target.value)}
+      className="w-full px-2 py-1 border rounded"
+    /></td>
+
+    <td className="p-2"><input
+      type="email"
+      value={editData.email}
+      onChange={e => handleEditChange('email', e.target.value)}
+      className="w-full px-2 py-1 border rounded"
+    /></td>
+
+    <td className="p-2">
+      <select
+        value={editData.leadSource}
+        onChange={e => handleEditChange('leadSource', e.target.value)}
+        className="w-full px-2 py-1 border rounded"
+      >
+        <option value="">Select…</option>
+        {settings.leadSourceOptions.map(o=>(
+          <option key={o} value={o}>{o}</option>
+        ))}
+      </select>
+    </td>
+
+    <td className="p-2">
+      <select
+        value={editData.source}
+        onChange={e => handleEditChange('source', e.target.value)}
+        className="w-full px-2 py-1 border rounded"
+      >
+        <option value="">Select…</option>
+        {settings.sourceOptions.map(o=>(
+          <option key={o} value={o}>{o}</option>
+        ))}
+      </select>
+    </td>
+
+    <td className="p-2">{m.reminderStatus||'-'}</td>
+    <td className="p-2">{m.freeze?'Yes':'No'}</td>
+
+    <td className="p-2 space-x-2">
+      <button
+        onClick={()=>saveEdit(m.id)}
+        className="px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600"
+      >Save</button>
+      <button
+        onClick={cancelEdit}
+        className="px-2 py-1 bg-gray-300 text-gray-800 rounded hover:bg-gray-400"
+      >Cancel</button>
+    </td>
+  </>
+) : (
                     <>
                       <td className="p-2">{m.name}</td>
                       <td className="p-2">{m.mobile}</td>
                       <td className="p-2">{m.renewalStr}</td>
                       <td className="p-2">{m.period}</td>
                       <td className="p-2">{m.dueStr}</td>
-                      <td className={`p-2 text-center ${statusColor(m.status)}`}>{m.status}</td>
+                      <td className={`p-2 text-center rounded-full ${statusColor(m.status)}`}>
+                        {m.status}
+                      </td>
                       <td className="p-2">{m.batch}</td>
                       <td className="p-2">{m.category}</td>
                       <td className="p-2">₹{m.fees}</td>
@@ -330,13 +496,13 @@ export default function MemberTable() {
                       <td className="p-2 space-x-2">
                         <button
                           onClick={()=>startEdit(m)}
-                          className="px-2 py-1 bg-yellow-400 text-white rounded-lg hover:bg-yellow-500"
+                          className="px-2 py-1 bg-yellow-400 text-white rounded hover:bg-yellow-500"
                         >
                           Edit
                         </button>
                         <button
                           onClick={()=>toggleFreeze(m.id,m.freeze)}
-                          className={`px-2 py-1 rounded-lg ${
+                          className={`px-2 py-1 rounded ${
                             m.freeze
                               ? 'bg-green-400 text-white hover:bg-green-500'
                               : 'bg-red-400 text-white hover:bg-red-500'
@@ -347,7 +513,7 @@ export default function MemberTable() {
                         <button
                           onClick={()=>sendReminder(m)}
                           disabled={sendingIds.includes(m.id)}
-                          className={`px-2 py-1 rounded-lg ${
+                          className={`px-2 py-1 rounded ${
                             sendingIds.includes(m.id)
                               ? 'bg-gray-300 text-gray-600'
                               : 'bg-blue-400 text-white hover:bg-blue-500'
@@ -363,23 +529,23 @@ export default function MemberTable() {
             </AnimatePresence>
           </tbody>
         </table>
-        {filtered.length===0 && (
+        {filtered.length === 0 && (
           <p className="p-4 text-center text-gray-500">No records found.</p>
         )}
       </div>
 
+
       {/* Mobile Cards */}
       <div className="block md:hidden space-y-4">
-        {filtered.map(m=>(
+        {filtered.map(m => (
           <motion.div
             key={m.id}
-            initial={{opacity:0,scale:0.95}}
-            animate={{opacity:1,scale:1}}
-            exit={{opacity:0,scale:0.95}}
-            transition={{duration:0.2}}
+            initial={{ opacity:0, scale:0.95 }}
+            animate={{ opacity:1, scale:1 }}
+            exit={{ opacity:0, scale:0.95 }}
+            transition={{ duration:0.2 }}
             className="bg-white p-4 rounded-lg shadow flex flex-col"
           >
-            {/* Header */}
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center space-x-2">
                 <input
@@ -391,7 +557,6 @@ export default function MemberTable() {
                 <span className="text-lg font-semibold">{m.name}</span>
               </div>
             </div>
-            {/* Details */}
             <dl className="grid grid-cols-2 gap-2 text-sm">
               <div><dt className="font-medium">Mobile</dt><dd>{m.mobile}</dd></div>
               <div><dt className="font-medium">Renewal</dt><dd>{m.renewalStr}</dd></div>
@@ -410,17 +575,16 @@ export default function MemberTable() {
               <div><dt className="font-medium">Reminder</dt><dd>{m.reminderStatus||'-'}</dd></div>
               <div><dt className="font-medium">Freeze</dt><dd>{m.freeze?'Yes':'No'}</dd></div>
             </dl>
-            {/* Actions */}
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 onClick={()=>startEdit(m)}
-                className="flex-1 px-3 py-2 bg-yellow-400 text-white rounded-lg hover:bg-yellow-500 text-sm"
+                className="flex-1 px-3 py-2 bg-yellow-400 text-white rounded hover:bg-yellow-500 text-sm"
               >
                 Edit
               </button>
               <button
                 onClick={()=>toggleFreeze(m.id,m.freeze)}
-                className={`flex-1 px-3 py-2 rounded-lg text-sm ${
+                className={`flex-1 px-3 py-2 rounded text-sm ${
                   m.freeze
                     ? 'bg-green-400 text-white hover:bg-green-500'
                     : 'bg-red-400 text-white hover:bg-red-500'
@@ -431,7 +595,7 @@ export default function MemberTable() {
               <button
                 onClick={()=>sendReminder(m)}
                 disabled={sendingIds.includes(m.id)}
-                className={`flex-1 px-3 py-2 rounded-lg text-sm ${
+                className={`flex-1 px-3 py-2 rounded text-sm ${
                   sendingIds.includes(m.id)
                     ? 'bg-gray-300 text-gray-600'
                     : 'bg-blue-400 text-white hover:bg-blue-500'
@@ -442,7 +606,7 @@ export default function MemberTable() {
             </div>
           </motion.div>
         ))}
-        {filtered.length===0 && (
+        {filtered.length === 0 && (
           <p className="p-4 text-center text-gray-500">No records found.</p>
         )}
       </div>
