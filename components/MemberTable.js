@@ -154,35 +154,69 @@ export default function MemberTable() {
   };
 
   // 9) Send reminders
-  const sendReminder = async m => {
-    setSendingIds(ids=>[...ids,m.id]);
-    const tpl = settings.messageTemplates[String(m.diffDays)] || settings.messageTemplates['0'];
-    const msg = tpl
-      .replace('{name}', m.name)
-      .replace('{dueDate}', m.dueStr)
-      .replace('{diffDays}', String(m.diffDays));
-    const to = (m.paidBy||m.mobile).replace(/\D/g,'');
-    let status='Sent', err='';
-    try {
-      await fetch(`${settings.whatsappApiUrl}?mobile=${to}&msg=${encodeURIComponent(msg)}`);
-      await addDoc(collection(db,'reminderLogs'),{
-        memberId:m.id, name:m.name, mobile:to,
-        diffDays:m.diffDays, message:msg,
-        status, sentAt:serverTimestamp()
-      });
-      alert(`Sent to ${m.name}`);
-    } catch(e) {
-      status='Failed'; err=e.message;
-      await addDoc(collection(db,'reminderLogs'),{
-        memberId:m.id, name:m.name, mobile:to,
-        diffDays:m.diffDays, message:msg,
-        status, error:err, sentAt:serverTimestamp()
-      });
-      alert(`Failed ${m.name}: ${err}`);
-    } finally {
-      setSendingIds(ids=>ids.filter(x=>x!==m.id));
+const sendReminder = async (m) => {
+  setSendingIds(ids => [...ids, m.id]);
+
+  // build message
+  const tpl = settings.messageTemplates[String(m.diffDays)] || settings.messageTemplates['0'];
+  const msg = tpl
+    .replace('{name}', m.name)
+    .replace('{dueDate}', m.dueStr)
+    .replace('{diffDays}', String(m.diffDays));
+  const to = (m.paidBy || m.mobile).replace(/\D/g, '');
+
+  let status = 'Sent', err = '';
+
+  try {
+    const url = `${settings.whatsappApiUrl}?mobile=${to}&msg=${encodeURIComponent(msg)}`;
+    const res = await fetch(url);
+
+    // still throw if HTTP is not 2xx
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} ${res.statusText}`);
     }
-  };
+
+    // now check the actual response body text
+    const bodyText = await res.text();
+    if (!bodyText.includes('Message sent to WhatsApp user.')) {
+      // the API returned 200 but not the expected success text
+      throw new Error(`Unexpected response: ${bodyText}`);
+    }
+
+    // log success
+    await addDoc(collection(db, 'reminderLogs'), {
+      memberId: m.id,
+      name:     m.name,
+      mobile:   to,
+      diffDays: m.diffDays,
+      message:  msg,
+      status,
+      sentAt:   serverTimestamp()
+    });
+
+    alert(`Sent to ${m.name}`);
+  } catch (e) {
+    // network error, non-2xx, or unexpected body
+    status = 'Failed';
+    err = e.message;
+
+    await addDoc(collection(db, 'reminderLogs'), {
+      memberId: m.id,
+      name:     m.name,
+      mobile:   to,
+      diffDays: m.diffDays,
+      message:  msg,
+      status,
+      error:    err,
+      sentAt:   serverTimestamp()
+    });
+
+    alert(`Failed to send to ${m.name}: ${err}`);
+  } finally {
+    setSendingIds(ids => ids.filter(x => x !== m.id));
+  }
+};
+
   const sendBulk = async () => {
     setSendingBulk(true);
     for (let m of filtered.filter(m=>selected.includes(m.id))) {
