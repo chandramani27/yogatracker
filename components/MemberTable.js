@@ -535,81 +535,260 @@ const saveEdit         = async id => {
       </div>
 
 
-      {/* Mobile Cards */}
-      <div className="block md:hidden space-y-4">
-        {filtered.map(m => (
-          <motion.div
-            key={m.id}
-            initial={{ opacity:0, scale:0.95 }}
-            animate={{ opacity:1, scale:1 }}
-            exit={{ opacity:0, scale:0.95 }}
-            transition={{ duration:0.2 }}
-            className="bg-white p-4 rounded-lg shadow flex flex-col"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  checked={selected.includes(m.id)}
-                  onChange={()=>toggleSelect(m.id)}
-                  className="w-5 h-5"
-                />
-                <span className="text-lg font-semibold">{m.name}</span>
-              </div>
+      {/* Mobile Cards (with inline-edit) */}
+<div className="block md:hidden space-y-4">
+  {filtered.map(m => (
+    <motion.div
+      key={m.id}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.2 }}
+      className="bg-white p-4 rounded-lg shadow flex flex-col"
+    >
+      {editingId === m.id ? (
+        /* ─── EDIT MODE ─────────────────────────────────── */
+        <>
+          <label className="mb-2">
+            <span className="text-sm font-medium">Name</span>
+            <input
+              type="text"
+              value={editData.name}
+              onChange={e => handleEditChange('name', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded"
+            />
+          </label>
+          <label className="mb-2">
+            <span className="text-sm font-medium">Mobile</span>
+            <input
+              type="tel"
+              value={editData.mobile}
+              onChange={e => handleEditChange('mobile', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded"
+            />
+          </label>
+          <label className="mb-2">
+            <span className="text-sm font-medium">Renewal Date</span>
+            <input
+              type="date"
+              value={editData.renewalDate}
+              onChange={e => handleEditChange('renewalDate', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded"
+            />
+          </label>
+          <label className="mb-2">
+            <span className="text-sm font-medium">Subscription Period</span>
+            <select
+              value={editData.period}
+              onChange={e => handleEditChange('period', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded"
+            >
+              <option value="">Select…</option>
+              {settings.periodOptions.map(o => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </label>
+          <label className="mb-2">
+            <span className="text-sm font-medium">Batch</span>
+            <select
+              value={editData.batch}
+              onChange={e => handleEditChange('batch', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded"
+            >
+              <option value="">Select…</option>
+              {settings.batchOptions.map(o => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </label>
+          <label className="mb-2">
+            <span className="text-sm font-medium">Category</span>
+            <select
+              value={editData.category}
+              onChange={e => handleEditChange('category', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded"
+            >
+              <option value="">Select…</option>
+              {settings.categoryOptions.map(o => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </label>
+          <label className="mb-2">
+            <span className="text-sm font-medium">Fees</span>
+            <input
+              type="number"
+              value={editData.fees}
+              onChange={e => handleEditChange('fees', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded"
+            />
+          </label>
+          <label className="mb-2">
+            <span className="text-sm font-medium">Paid By Relative</span>
+            <input
+              type="tel"
+              value={editData.paidBy}
+              onChange={e => handleEditChange('paidBy', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded"
+            />
+          </label>
+          <label className="mb-2">
+            <span className="text-sm font-medium">Email</span>
+            <input
+              type="email"
+              value={editData.email}
+              onChange={e => handleEditChange('email', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded"
+            />
+          </label>
+          <label className="mb-2">
+            <span className="text-sm font-medium">Lead Source</span>
+            <select
+              value={editData.leadSource}
+              onChange={e => handleEditChange('leadSource', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded"
+            >
+              <option value="">Select…</option>
+              {settings.leadSourceOptions.map(o => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </label>
+          <label className="mb-4">
+            <span className="text-sm font-medium">Center Source</span>
+            <select
+              value={editData.source}
+              onChange={e => handleEditChange('source', e.target.value)}
+              className="mt-1 w-full px-3 py-2 border rounded"
+            >
+              <option value="">Select…</option>
+              {settings.sourceOptions.map(o => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </label>
+
+          <div className="flex justify-between">
+            <button
+              onClick={() => saveEdit(m.id)}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex-1 mr-2"
+            >
+              Save
+            </button>
+            <button
+              onClick={cancelEdit}
+              className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400 flex-1"
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        /* ─── DISPLAY MODE ───────────────────────────────── */
+        <>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={selected.includes(m.id)}
+                onChange={() => toggleSelect(m.id)}
+                className="w-5 h-5"
+              />
+              <span className="text-lg font-semibold">{m.name}</span>
             </div>
-            <dl className="grid grid-cols-2 gap-2 text-sm">
-              <div><dt className="font-medium">Mobile</dt><dd>{m.mobile}</dd></div>
-              <div><dt className="font-medium">Renewal</dt><dd>{m.renewalStr}</dd></div>
-              <div><dt className="font-medium">Period</dt><dd>{m.period}</dd></div>
-              <div><dt className="font-medium">Due</dt><dd>{m.dueStr}</dd></div>
-              <div><dt className="font-medium">Status</dt>
-                <dd><span className={`px-2 py-1 rounded-full ${statusColor(m.status)}`}>{m.status}</span></dd>
-              </div>
-              <div><dt className="font-medium">Batch</dt><dd>{m.batch}</dd></div>
-              <div><dt className="font-medium">Category</dt><dd>{m.category}</dd></div>
-              <div><dt className="font-medium">Fees</dt><dd>₹{m.fees}</dd></div>
-              <div><dt className="font-medium">Paid By</dt><dd>{m.paidBy||'-'}</dd></div>
-              <div><dt className="font-medium">Email</dt><dd>{m.email||'-'}</dd></div>
-              <div><dt className="font-medium">Lead Src</dt><dd>{m.leadSource||'-'}</dd></div>
-              <div><dt className="font-medium">Center</dt><dd>{m.source||'-'}</dd></div>
-              <div><dt className="font-medium">Reminder</dt><dd>{m.reminderStatus||'-'}</dd></div>
-              <div><dt className="font-medium">Freeze</dt><dd>{m.freeze?'Yes':'No'}</dd></div>
-            </dl>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                onClick={()=>startEdit(m)}
-                className="flex-1 px-3 py-2 bg-yellow-400 text-white rounded hover:bg-yellow-500 text-sm"
-              >
-                Edit
-              </button>
-              <button
-                onClick={()=>toggleFreeze(m.id,m.freeze)}
-                className={`flex-1 px-3 py-2 rounded text-sm ${
-                  m.freeze
-                    ? 'bg-green-400 text-white hover:bg-green-500'
-                    : 'bg-red-400 text-white hover:bg-red-500'
-                }`}
-              >
-                {m.freeze?'Unfreeze':'Freeze'}
-              </button>
-              <button
-                onClick={()=>sendReminder(m)}
-                disabled={sendingIds.includes(m.id)}
-                className={`flex-1 px-3 py-2 rounded text-sm ${
-                  sendingIds.includes(m.id)
-                    ? 'bg-gray-300 text-gray-600'
-                    : 'bg-blue-400 text-white hover:bg-blue-500'
-                }`}
-              >
-                {sendingIds.includes(m.id)?'Sending…':'Send'}
-              </button>
+            <button
+              onClick={() => startEdit(m)}
+              className="px-3 py-1 bg-yellow-400 text-white rounded hover:bg-yellow-500 text-sm"
+            >
+              Edit
+            </button>
+          </div>
+
+          <dl className="grid grid-cols-2 gap-2 text-sm">
+          <div>
+              <dt className="font-medium">Mobile</dt>
+              <dd>{m.mobile}</dd>
             </div>
-          </motion.div>
-        ))}
-        {filtered.length === 0 && (
-          <p className="p-4 text-center text-gray-500">No records found.</p>
-        )}
-      </div>
+            <div>
+              <dt className="font-medium">Renewal</dt>
+              <dd>{m.renewalStr}</dd>
+            </div>
+            <div>
+              <dt className="font-medium">Period</dt>
+              <dd>{m.period}</dd>
+            </div>
+            <div>
+              <dt className="font-medium">Due</dt>
+              <dd>{m.dueStr}</dd>
+            </div>
+            <div>
+              <dt className="font-medium">Status</dt>
+              <dd>
+                <span className={`px-2 py-1 rounded-full ${statusColor(m.status)}`}>
+                  {m.status}
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium">Batch</dt>
+              <dd>{m.batch}</dd>
+            </div>
+            <div>
+              <dt className="font-medium">Category</dt>
+              <dd>{m.category}</dd>
+            </div>
+            <div>
+              <dt className="font-medium">Fees</dt>
+              <dd>₹{m.fees}</dd>
+            </div>
+            <div>
+              <dt className="font-medium">Paid By</dt>
+              <dd>{m.paidBy||'-'}</dd>
+            </div>
+            <div>
+              <dt className="font-medium">Email</dt>
+              <dd>{m.email||'-'}</dd>
+            </div>
+            <div>
+              <dt className="font-medium">Lead</dt>
+              <dd>{m.leadSource||'-'}</dd>
+            </div>
+            <div>
+              <dt className="font-medium">Center</dt>
+              <dd>{m.source||'-'}</dd>
+            </div>
+          </dl>
+
+          {/* ← Add this section back in → */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              onClick={() => toggleFreeze(m.id, m.freeze)}
+              className={`flex-1 px-3 py-2 rounded text-sm ${
+                m.freeze
+                  ? 'bg-green-400 text-white hover:bg-green-500'
+                  : 'bg-red-400 text-white hover:bg-red-500'
+              }`}
+            >
+              {m.freeze ? 'Unfreeze' : 'Freeze'}
+            </button>
+            <button
+              onClick={() => sendReminder(m)}
+              disabled={sendingIds.includes(m.id)}
+              className={`flex-1 px-3 py-2 rounded text-sm ${
+                sendingIds.includes(m.id)
+                  ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                  : 'bg-blue-400 text-white hover:bg-blue-500'
+              }`}
+            >
+              {sendingIds.includes(m.id) ? 'Sending…' : 'Send'}
+            </button>
+          </div>
+        </>
+      )}
+    </motion.div>
+  ))}
+</div>
     </div>
   );
 }
